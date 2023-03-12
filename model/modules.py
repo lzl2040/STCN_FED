@@ -196,7 +196,7 @@ def get_frequency_modes(seq_len, modes=64, mode_select_method='random'):
 
 # ########## fourier layer #############
 class FourierBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, modes=0, mode_select_method='random'):
+    def __init__(self, in_channels, out_channels, modes=0, mode_select_method='constant'):
         super(FourierBlock, self).__init__()
         print('fourier enhanced block used!')
         """
@@ -216,11 +216,11 @@ class FourierBlock(nn.Module):
         #                                 dtype=torch.cfloat))
         # 实部,8为head num
         self.weights1_real = nn.Parameter(
-            self.scale * torch.rand(8, in_channels // 8, out_channels // 8, modes,1,
+            self.scale * torch.rand(in_channels, out_channels, modes,1,
                                         dtype=torch.float))
         # 虚部,8为head num
         self.weights1_img = nn.Parameter(
-            self.scale * torch.rand(8, in_channels // 8, out_channels // 8, modes,1,
+            self.scale * torch.rand(in_channels, out_channels, modes,1,
                                     dtype=torch.float))
         # 拼接起来
         # self.weight1 = torch.cat([self.weight1_real,self.weight1_img],dim=0)
@@ -235,37 +235,30 @@ class FourierBlock(nn.Module):
         weights = torch.view_as_complex(weights)
         # print('weights shape:' + str(weights.shape))
         # print('input shape:' + str(input.shape))
-        return torch.einsum("bhi,hio->bho", input, weights)
+        return torch.einsum("bi,io->bo", input, weights)
 
     def forward(self, feature):
-        # print(feature)
+        # 注意没有使用多头
         B,C,H,W = feature.shape
-        # 先变成B,C,L吧
+        raw = feature
+        # 变为 B L C
         feature = feature.view(B,C,H * W).transpose(1,2)
-        feature = feature.view(B,H * W,self.heads,-1)
-        # print('feature shape:' + str(feature.shape))
-        # 对feature进行映射
-
-        # size = [B, L, H, E] H:head E:channel
-        B, L, He, E = feature.shape
+        # size = [B, L, C] C:channel
+        B, L, C = feature.shape
         if self.index == None:
             self.index = get_frequency_modes(L, modes=self.modes, mode_select_method=self.mode_select_method)
             print('modes={}, index={}'.format(self.modes, self.index))
-        x = feature.permute(0, 2, 3, 1)
-        # print('x shape:' + str(x.shape))
+        x = feature.permute(0, 2, 1)
         # Compute Fourier coefficients
-        # x:B He E L
-        x_ft = torch.fft.rfft(x)
-        # print('x_ft shape:' + str(x_ft.shape))
+        x_ft = torch.fft.rfft(x,dim=-1)
         # Perform Fourier neural operations
-        out_ft = torch.zeros(B, He, E, L // 2 + 1, device=x.device, dtype=torch.cfloat)
+        out_ft = torch.zeros(B, C, L // 2 + 1, device=x.device, dtype=torch.cfloat)
         for wi, i in enumerate(self.index):
-            out_ft[:, :, :, wi] = self.compl_mul1d(x_ft[:, :, :, i], self.weights1_real[:, :, :, wi,:],
-                                                   self.weights1_img[:,:,:,wi,:])
+            out_ft[:, :, wi] = self.compl_mul1d(x_ft[:, :, i], self.weights1_real[:, :, wi,:],
+                                                   self.weights1_img[:,:,wi,:])
         # Return to time domain
-        x = torch.fft.irfft(out_ft, n=x.size(-1))
-        # print('final x shape:' + str(x.shape))
-        # 从B H E L恢复成B C H W
-        x = x.view(B,He * E,H,W)
-        # print('final x shape:' + str(x.shape))
-        return x
+        enhance = torch.fft.irfft(out_ft, n=x.size(-1))
+        # 从B C L恢复成B C H W
+        enhance = enhance.view(B,C,H,W)
+        # 残差连接
+        return raw + enhance

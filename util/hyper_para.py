@@ -55,10 +55,10 @@ class HyperParameters():
         # Assign default if not given
         if self.args['stage'] == 0:
             # Static image pretraining
-            self.args['lr'] = none_or_default(self.args['lr'], 4e-5)
-            self.args['batch_size'] = none_or_default(self.args['batch_size'], 16)
-            self.args['iterations'] = none_or_default(self.args['iterations'], 75010)
-            self.args['steps'] = none_or_default(self.args['steps'], [37500])
+            self.args['lr'] = none_or_default(self.args['lr'], 1e-5)
+            self.args['batch_size'] = none_or_default(self.args['batch_size'], 8)
+            self.args['iterations'] = none_or_default(self.args['iterations'], 300010)
+            self.args['steps'] = none_or_default(self.args['steps'], [150010])
             self.args['single_object'] = True
         elif self.args['stage'] == 1:
             # BL30K pretraining

@@ -40,7 +40,7 @@ class MemoryReader(nn.Module):
     def __init__(self):
         super().__init__()
  
-    def get_affinity(self, mk,qk,ms,qe):
+    def get_affinity(self, mk,qk):
         B, CK, T, H, W = mk.shape
         mk = mk.flatten(start_dim=2)
         qk = qk.flatten(start_dim=2)
